@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using AutoMapper;
+using JThreads.Application.Util;
 using JThreads.Data.Dto.Comments;
 using JThreads.Data.Dto.Namespace;
 using JThreads.Data.Dto.Threads;
@@ -35,58 +36,35 @@ namespace JThreads.Application.Profiles
             CreateMap<Thread, ThreadDto>()
                 .ForMember(t =>
                     t.TotalComments, opt =>
-                    opt.MapFrom(source => source.Comments.Count))
+                    opt.MapFrom(source => source.ThreadStats.TotalComments))
                 .ForMember(t =>
                     t.Comments, opt =>
-                    opt.MapFrom(source => source.Comments
-                    .Count(c => c.Parent == null)))
+                    opt.MapFrom(source => source.ThreadStats.TotalDirectComments))
                 .ForMember(t =>
                     t.Likes, opt =>
-                    opt.MapFrom(source => source.ThreadRatings
-                        .Count(cr => cr.Type == Rating.Positive)))
-                .ForMember(t =>
-                    t.Dislikes, opt =>
-                    opt.MapFrom(source => source.ThreadRatings
-                        .Count(cr => cr.Type == Rating.Negative))); 
+                    opt.MapFrom(source => source.ThreadStats.TotalLikes));
+                //.ForMember(t =>
+                //    t.Dislikes, opt =>
+                //    opt.MapFrom(source => source.ThreadRatings
+                //        .Count(cr => cr.Type == Rating.Negative))); 
 
             CreateMap<ApplicationUser, UserDto>();
-
-            Func<Comment, int> getTotalReplies = (Comment comment) =>
-            {
-                var total = 0;
-                var stack = new Stack<Comment>();
-                stack.Push(comment);
-
-                while (stack.TryPop(out var current))
-                {
-                    total += current.Replies.Count;
-                    foreach (var reply in current.Replies)
-                    {  
-                        stack.Push(reply);
-                    }
-                }
-
-                return total;
-            };
-            
             CreateMap<CreateCommentDto, Comment>();
             CreateMap<Comment, CommentDto>()
                 .ForMember(t =>
                     t.Likes, opt =>
-                    opt.MapFrom(source => source.CommentRatings
-                        .Count(cr => cr.Type == Rating.Positive)))
+                    opt.MapFrom(source => source.CommentStats.TotalLikes))
                 .ForMember(t =>
                     t.Dislikes, opt =>
-                    opt.MapFrom(source => source.CommentRatings
-                        .Count(cr => cr.Type == Rating.Negative)))
+                    opt.MapFrom(source => source.CommentStats.TotalDislikes))
                 .ForMember(t =>
                     t.DirectReplyCount, opt =>
-                    opt.MapFrom(source => source.Replies.Count));
-                //.ForMember(dest => dest.Replies,
-                //    act => act.Ignore())
-                //.ForMember(t =>
-                //    t.TotalReplyCount, opt =>
-                //    opt.MapFrom(source => getTotalReplies(source)));
+                    opt.MapFrom(source => source.CommentStats.TotalDirectReplies))
+                .ForMember(dest => dest.Replies,
+                    act => act.Ignore())
+                .ForMember(t =>
+                    t.TotalReplyCount, opt =>
+                    opt.MapFrom(source => source.CommentStats.TotalReplies));
 
             CreateMap<CreateCommentRatingDto, CommentRating>();
             CreateMap<CreateThreadRatingDto, ThreadRating>();

@@ -38,5 +38,7 @@ namespace JThreads.Data.Entity
 
         //comment either belongs to application user (Identity or OAuth), or Guest (with nick name)??
         public Guest Guest { get; set; }
+         
+        public CommentStats CommentStats { get; set; }
     }
 }

@@ -170,12 +170,22 @@ namespace JThreads.Application.Services
 
         private async Task<Thread> GetThreadWithEverything(Expression<Func<Thread, bool>> predicate)
         {
-            return await _context.Threads
+            var thread = await _context.Threads
                 .Include(t => t.Namespace)
                     .ThenInclude(n => n.User)
-                .Include(t => t.Comments)
-                .Include(t => t.ThreadRatings)
+                //.Include(t => t.Comments)
+                //.Include(t => t.ThreadRatings)
+                .Include(t => t.ThreadStats)
                 .SingleOrDefaultAsync(predicate);
+
+            return thread;
         }
+
+        //private async Task GetThreadStats(ThreadDto thread)
+        //{
+        //    var stats = await _context.ThreadStats.Where(t => t.ThreadId == thread.ThreadId).SingleOrDefaultAsync();
+        //    thread.TotalComments = stats?.TotalComments ?? 0;
+        //    thread.Likes = stats?.TotalLikes ?? 0;
+        //}
     }
 }

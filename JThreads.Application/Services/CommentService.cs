@@ -11,6 +11,8 @@ using JThreads.Data.Dto.Comments;
 using JThreads.Data.Entity;
 using JThreads.Data.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace JThreads.Application.Services
 {
@@ -20,13 +22,15 @@ namespace JThreads.Application.Services
         private readonly UserService _userService;
         private readonly GuestService _guestService;
         private readonly IMapper _mapper;
+        private IMemoryCache _cache;
 
-        public CommentService(JThreadsDbContext context, UserService userService, IMapper mapper, GuestService guestService)
+        public CommentService(JThreadsDbContext context, UserService userService, IMapper mapper, GuestService guestService, IMemoryCache memoryCache)
         {
             _context = context;
             _userService = userService;
             _guestService = guestService;
             _mapper = mapper;
+            _cache = memoryCache;
         }
 
         public async Task<Response> Delete(int commentId)
@@ -50,6 +54,8 @@ namespace JThreads.Application.Services
             {
                 return Respond().WithError("*", "Not Authorized");
             }
+
+            ClearCacheKeysForThread(comment.Thread.ThreadId);
 
             _context.Comments.Remove(comment);
             var diff = await _context.SaveChangesAsync();
@@ -114,6 +120,8 @@ namespace JThreads.Application.Services
 
             await _context.SaveChangesAsync();
 
+            ClearCacheKeysForThread(thread.ThreadId);
+
             return new DataResponse<CommentDto>()
                 .WithData(_mapper.Map<CommentDto>(commentEntity));
         }
@@ -121,6 +129,7 @@ namespace JThreads.Application.Services
         public async Task<Response> Rate(CreateCommentRatingDto createCommentRatingDto)
         {
             var comment = await _context.Comments
+                .Include(c => c.Thread)
                 .SingleOrDefaultAsync(c => c.CommentId == createCommentRatingDto.CommentId);
 
             //var existingCommentRating = await _context.CommentRatings
@@ -155,72 +164,99 @@ namespace JThreads.Application.Services
             comment.CommentRatings.Add(commentRatingEntity);
             await _context.SaveChangesAsync();
 
+            ClearCacheKeysForThread(comment.Thread.ThreadId);
+
             return Respond().WithSuccess();
         }
 
         public async Task<Response> Search(int? threadId, int pageIndex, Sort sortType, int? parentId, int pageSize, string threadIdentifier, int? namespaceId)
         {
-            //Max of 30 comments per request for now
-            if (pageSize > 30) pageSize = 30;
+            var pageKey = $"{threadId}-{pageIndex}-{sortType}-{parentId}-{pageSize}-{threadIdentifier}-{namespaceId}";
+            var cacheEntry = await _cache.GetOrCreateAsync(pageKey, async entry =>
+                {
 
-            if (!threadId.HasValue && (string.IsNullOrEmpty(threadIdentifier) || !namespaceId.HasValue))
-                return Respond().WithError("*", "Must provide a threadId or threadIdentifier & namespaceId");
+                    //Max of 30 comments per request for now
+                    if (pageSize > 30) pageSize = 30;
 
-            //var thread = await _context.Threads
-            //    .Include(t => t.Namespace)
-            //    .ThenInclude(t => t.User)
-            //    .SingleOrDefaultAsync(t => t.ThreadId == threadId);
+                    if (!threadId.HasValue && (string.IsNullOrEmpty(threadIdentifier) || !namespaceId.HasValue))
+                        return Respond().WithError("*", "Must provide a threadId or threadIdentifier & namespaceId");
 
-            //if (thread == null)
-            //    return Respond()
-            //        .WithError("*", "Thread doesn't exist");
+                    //var thread = await _context.Threads
+                    //    .Include(t => t.Namespace)
+                    //    .ThenInclude(t => t.User)
+                    //    .SingleOrDefaultAsync(t => t.ThreadId == threadId);
 
-            var query = _context.Comments
-                .Include(c => c.User)
-                .Include(c => c.Guest)
-                .Include(c => c.Thread)
-                .Include(c => c.Parent)
+                    //if (thread == null)
+                    //    return Respond()
+                    //        .WithError("*", "Thread doesn't exist");
 
-                // 10 levels of hack
-                .Include(c => c.Replies)
-                    .ThenInclude(c => c.Replies)
-                        .ThenInclude(c => c.Replies)
-                            .ThenInclude(c => c.Replies)
-                                .ThenInclude(c => c.Replies)
-                                    .ThenInclude(c => c.Replies)
-                                        .ThenInclude(c => c.Replies)
-                                             .ThenInclude(c => c.Replies)
-                                                 .ThenInclude(c => c.Replies)
-                                                     .ThenInclude(c => c.Replies)
-                //.ThenInclude(r => r.User)
-                .Include(c => c.CommentRatings)
-                .AsQueryable();
+                    var query = _context.Comments
+                        .Include(c => c.User)
+                        .Include(c => c.Guest)
+                        .Include(c => c.Thread)
+                        .Include(c => c.Parent)
+                        //.Include(c => c.Replies)
+                        .Include(c => c.CommentRatings)
+                        .Include(c => c.CommentStats)
+                        .AsQueryable();
 
-            query = string.IsNullOrEmpty(threadIdentifier) ?
-                query.Where(c => c.Thread.ThreadId == threadId) :
-                query.Where(c => c.Thread.Identifier.ToLower() == threadIdentifier.ToLower()
-                    && c.Thread.Namespace.NamespaceId == namespaceId.Value);
+                    query = string.IsNullOrEmpty(threadIdentifier) ?
+                        query.Where(c => c.Thread.ThreadId == threadId) :
+                        query.Where(c => c.Thread.Identifier.ToLower() == threadIdentifier.ToLower()
+                            && c.Thread.Namespace.NamespaceId == namespaceId.Value);
 
-            query = parentId.HasValue ?
-                query.Where(c => c.Parent.CommentId == parentId) :
-                query.Where(c => c.Parent == null);
+                    query = parentId.HasValue ?
+                        query.Where(c => c.Parent.CommentId == parentId) :
+                        query.Where(c => c.Parent == null);
 
-            query = sortType switch
+                    query = sortType switch
+                    {
+                        Sort.MostRecent => query.OrderByDescending(c => c.CreatedOn),
+                        Sort.HighestRating => query
+                            .OrderByDescending(c => c.CommentRatings.Count(cr => cr.Type == Rating.Positive))
+                            .ThenByDescending(c => c.CreatedOn),
+
+                        // Currently only orders by first level total replies :(
+                        Sort.MostReplies => query
+                            .OrderByDescending(c => c.CommentStats.TotalReplies)
+                                .ThenByDescending(c => c.CreatedOn),
+                        _ => query.OrderByDescending(c => c.CreatedOn)
+                    };
+
+
+                    var data = await query
+                            .Skip(pageIndex * pageSize)
+                            .Take(pageSize)
+                            .ToListAsync();
+
+                    if (_cache.TryGetValue($"{threadId}-keys", out List<string> keys))
+                    {
+                        keys.Add(pageKey);
+                        _cache.Set($"{threadId}-keys", keys);
+                    } 
+                    else
+                    {
+                        _cache.Set($"{threadId}-keys", new List<string>() { pageKey });
+                    }
+                    entry.SlidingExpiration = TimeSpan.FromMinutes(5);
+
+                    return new DataResponse<IEnumerable<CommentDto>>()
+                        .WithData(_mapper.Map<IEnumerable<CommentDto>>(data));
+                });
+
+            return cacheEntry;
+        }
+
+        public void ClearCacheKeysForThread(int threadId)
+        {
+            if (_cache.TryGetValue($"{threadId}-keys", out List<string> keys))
             {
-                Sort.MostRecent => query.OrderByDescending(c => c.CreatedOn),
-                Sort.HighestRating => query
-                    .OrderByDescending(c => c.CommentRatings.Count(cr => cr.Type == Rating.Positive))
-                    .ThenByDescending(c => c.CreatedOn),
-                Sort.MostReplies => query.OrderByDescending(c => c.Replies.Count)
-                    .ThenByDescending(c => c.CreatedOn),
-                _ => query.OrderByDescending(c => c.CreatedOn)
-            };
-
-            return new DataResponse<IEnumerable<CommentDto>>()
-                .WithData(_mapper.Map<IEnumerable<CommentDto>>(await query
-                    .Skip(pageIndex * pageSize)
-                    .Take(pageSize)
-                    .ToListAsync()));
+                foreach (var key in keys)
+                {
+                    _cache.Remove(key);
+                }
+                _cache.Remove($"{threadId}-keys");
+            }
         }
     }
 }

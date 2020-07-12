@@ -15,6 +15,8 @@ namespace JThreads.Data
         public DbSet<CommentRating> CommentRatings { get; set; }
         public DbSet<ThreadRating> ThreadRatings { get; set; }
         public DbSet<Guest> Guests { get; set; }
+        public DbSet<CommentStats> CommentStats { get; set; }
+        public DbSet<ThreadStats> ThreadStats { get; set; }
 
         public JThreadsDbContext(DbContextOptions<JThreadsDbContext> options) : base(options)
         {
@@ -24,6 +26,30 @@ namespace JThreads.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder
+                .Entity<CommentStats>(eb =>
+                {
+                    //eb.HasNoKey();
+                    eb.ToView("View_CommentStatistics");
+                });
+
+            modelBuilder
+                .Entity<ThreadStats>(eb =>
+                {
+                    //eb.HasNoKey();
+                    eb.ToView("View_ThreadStatistics");
+                });
+
+            modelBuilder.Entity<Comment>()
+                .HasMany(c => c.CommentRatings)
+                    .WithOne(cr => cr.Comment)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Comment>()
+                .HasMany(c => c.Replies)
+                    .WithOne(r => r.Parent)
+                    .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }

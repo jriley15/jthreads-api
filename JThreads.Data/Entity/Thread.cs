@@ -34,5 +34,6 @@ namespace JThreads.Data.Entity
 
         public int Views { get; set; }
 
+        public ThreadStats ThreadStats { get; set; }
     }
 }

@@ -3,15 +3,17 @@ using System;
 using JThreads.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 namespace JThreads.Data.Migrations
 {
     [DbContext(typeof(JThreadsDbContext))]
-    partial class JThreadsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20200712033840_15")]
+    partial class _15
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -397,8 +399,7 @@ namespace JThreads.Data.Migrations
 
                     b.HasOne("JThreads.Data.Entity.Comment", "Parent")
                         .WithMany("Replies")
-                        .HasForeignKey("ParentCommentId")
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .HasForeignKey("ParentCommentId");
 
                     b.HasOne("JThreads.Data.Entity.Thread", "Thread")
                         .WithMany("Comments")
