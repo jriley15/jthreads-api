@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Migrations\20200126011223_5.cs" />
+    <Compile Remove="Migrations\20200126011223_5.Designer.cs" />
+    <Compile Remove="Migrations\20200126012636_5.cs" />
+    <Compile Remove="Migrations\20200126012636_5.Designer.cs" />
+    <Compile Remove="Migrations\20200128024347_5.cs" />
+    <Compile Remove="Migrations\20200128024347_5.Designer.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="3.1.1" />
+    <PackageReference Include="Microsoft.Extensions.Identity.Stores" Version="3.1.1" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="3.1.0" />
+  </ItemGroup>
+
+</Project>
